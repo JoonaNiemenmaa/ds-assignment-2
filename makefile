@@ -1,2 +1,4 @@
-client: client.c
-	gcc -std=gnu99 -Wall -Werror client.c -o client
+client: src/client/client.c
+	gcc -std=gnu99 -g -Wall -pedantic src/client/client.c -o client
+server: src/server/server.c
+	gcc -std=gnu99 -g -Wall -pedantic src/server/server.c -o server
