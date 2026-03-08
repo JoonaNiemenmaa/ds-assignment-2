@@ -10,25 +10,52 @@
 
 #include <pthread.h>
 
+#include "clients.c"
+#include "string.c"
+
 #define BACKLOG 10
 #define BUFFER_SIZE 255
 
-typedef struct thread_args {
-    int sock;
-} thread_args_t;
+client_t *list = NULL;
 
-void *serve_client(void *argv) {
-    thread_args_t *args = (thread_args_t *)argv;
+typedef struct {
+    client_t *client;
+} args_t;
 
-    int sock = args->sock;
-    uint8_t buffer[BUFFER_SIZE] = "";
-    int received_bytes = recv(sock, buffer, BUFFER_SIZE, 0);
+void *serve_client(void *arg) {
+    args_t *args = (args_t *)arg;
+
+    client_t *client = args->client;
+
+    free(args);
+
+    clients_print(list);
+
+    char buffer[BUFFER_SIZE] = "";
+    int received_bytes = recv(client->sock, buffer, BUFFER_SIZE, 0);
+
     while (received_bytes > 0) {
-        printf("%s", buffer);
-        received_bytes = recv(sock, buffer, BUFFER_SIZE, 0);
+
+        string_t msg = string(client->nickname);
+        string_push(&msg, ": ");
+        string_push(&msg, buffer);
+
+        printf("%s\n", msg.str);
+
+        for (client_t *p = list; p; p = p->next) {
+            int sent_bytes = 0;
+            sent_bytes = send(p->sock, msg.str, msg.capacity, 0);
+            printf("sent bytes: %d, %s\n", sent_bytes, buffer);
+        }
+
+        free(msg.str);
+
+        received_bytes = recv(client->sock, buffer, BUFFER_SIZE, 0);
     }
 
-    close(sock);
+    close(client->sock);
+    list = clients_remove(list, client);
+
     return NULL;
 }
 
@@ -73,12 +100,37 @@ int main(int argc, char **argv) {
     socklen_t address_size =  sizeof(their_address);
 
     int connection = 0;
+    char nickname_buffer[NICKNAME_LENGTH] = "";
     while ((connection = accept(sock, (struct sockaddr *)&their_address, &address_size)) > -1) {
-        thread_args_t args = {
-            .sock = connection
-        };
-        pthread_t thread;
-        pthread_create(&thread, NULL, serve_client, &args);
+        int received_bytes = recv(connection, nickname_buffer, NICKNAME_LENGTH, 0);
+
+        if (received_bytes > 0) {
+            pthread_t thread;
+            client_t *client = create_client(thread, connection, nickname_buffer);
+
+            int code = 0;
+            if (list) {
+                code = clients_append(list, client);
+            } else {
+                list = client;
+            }
+
+            if (code == -1) {
+                free(client);
+                close(connection);
+                continue;
+            }
+
+            args_t *args = NULL;
+            if ((args = (args_t *)malloc(sizeof(args_t))) == NULL) {
+                perror("error");
+                exit(1);
+            }
+
+            args->client = client;
+
+            pthread_create(&thread, NULL, serve_client, args);
+        }
     }
 
     freeaddrinfo(address_info);
