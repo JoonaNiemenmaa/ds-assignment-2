@@ -43,19 +43,16 @@ void *serve_client(void *arg) {
     free(args);
 
     pthread_mutex_lock(&list_lock);
+    char *msg;
+    int capacity = asprintf(&msg, "%s connected", client->nickname);
     for (client_t *p = list; p; p = p->next) {
         if (p != client) {
-            string_t msg = string(client->nickname);
-
-            string_push(&msg, " connected");
-
             pthread_mutex_lock(&p->sock_lock);
-            send(p->sock, msg.str, msg.capacity, 0);
+            send(p->sock, msg, capacity, 0);
             pthread_mutex_unlock(&p->sock_lock);
-
-            free(msg.str);
         }
     }
+    free(msg);
     pthread_mutex_unlock(&list_lock);
 
     const int pfds_size = 1;
@@ -82,9 +79,12 @@ void *serve_client(void *arg) {
 
             if (buffer[0] == '/' && strlen(buffer) >= 2) {
                 int len = 0;
-                char *p;
+                int channel = 0;
+
+                char *p = NULL;
                 char command = buffer[1];
                 char peer_nickname[NICKNAME_LENGTH] = "";
+
                 switch (command) {
                     case 'q':
                         quit = true;
@@ -123,6 +123,36 @@ void *serve_client(void *arg) {
 
                         break;
                     case 'c':
+                        if (strlen(buffer) >= 4) {
+                            p = &buffer[3];
+                            buffer[4] = '\0';
+
+                            channel = atoi(p);
+
+                            if (channel >= 0 && channel < CHANNELS) {
+                                client->channel = channel;
+
+                                char *msg;
+                                int capacity = asprintf(&msg, "%s connected to channel %d", client->nickname, client->channel);
+                                for (client_t *p = list; p; p = p->next) {
+                                    if (p->channel == client->channel) {
+                                        pthread_mutex_lock(&p->sock_lock);
+                                        send(p->sock, msg, capacity, 0);
+                                        pthread_mutex_unlock(&p->sock_lock);
+                                    }
+                                }
+                                free(msg);
+
+                            }  else {
+                                pthread_mutex_lock(&client->sock_lock);
+                                send(client->sock, "please supply a valid channel (0-3)", 36, 0);
+                                pthread_mutex_unlock(&client->sock_lock);
+                            }
+                        } else {
+                            pthread_mutex_lock(&client->sock_lock);
+                            send(client->sock, "no argument given", 18, 0);
+                            pthread_mutex_unlock(&client->sock_lock);
+                        }
                         break;
                     default:
                         pthread_mutex_lock(&client->sock_lock);
@@ -137,9 +167,11 @@ void *serve_client(void *arg) {
 
                 pthread_mutex_lock(&list_lock);
                 for (client_t *p = list; p; p = p->next) {
-                    pthread_mutex_lock(&p->sock_lock);
-                    send(p->sock, msg.str, msg.capacity, 0);
-                    pthread_mutex_unlock(&p->sock_lock);
+                    if (client->channel == p->channel) {
+                        pthread_mutex_lock(&p->sock_lock);
+                        send(p->sock, msg.str, msg.capacity, 0);
+                        pthread_mutex_unlock(&p->sock_lock);
+                    }
                 }
                 pthread_mutex_unlock(&list_lock);
 
@@ -233,7 +265,8 @@ int main(int argc, char **argv) {
         if (received_bytes > 0) {
 
             pthread_t thread;
-            client_t *client = create_client(thread, connection, nickname_buffer);
+            int channel = 0;
+            client_t *client = create_client(connection, channel, nickname_buffer);
 
             int code = 0;
             pthread_mutex_lock(&list_lock);
