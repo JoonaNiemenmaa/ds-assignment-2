@@ -11,7 +11,7 @@
 #include <pthread.h>
 
 #include "clients.c"
-#include "string.c"
+#include "../lib/string.c"
 
 #define BACKLOG 10
 #define BUFFER_SIZE 255
@@ -82,6 +82,8 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    /* The snippet below taken from the link below */
+    /* https://beej.us/guide/bgnet/html/split/system-calls-or-bust.html#bind */
     int yes=1;
     // lose the pesky "Address already in use" error message
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
