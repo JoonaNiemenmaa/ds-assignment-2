@@ -29,8 +29,6 @@ void *serve_client(void *arg) {
 
     free(args);
 
-    clients_print(list);
-
     char buffer[BUFFER_SIZE] = "";
     int received_bytes = recv(client->sock, buffer, BUFFER_SIZE, 0);
 
@@ -40,12 +38,9 @@ void *serve_client(void *arg) {
         string_push(&msg, ": ");
         string_push(&msg, buffer);
 
-        printf("%s\n", msg.str);
-
         for (client_t *p = list; p; p = p->next) {
             int sent_bytes = 0;
             sent_bytes = send(p->sock, msg.str, msg.capacity, 0);
-            printf("sent bytes: %d, %s\n", sent_bytes, buffer);
         }
 
         free(msg.str);
@@ -65,13 +60,13 @@ int main(int argc, char **argv) {
 
     struct addrinfo request = {
         .ai_flags = AI_PASSIVE,
-        .ai_family = AF_INET6,
+        .ai_family = AF_INET,
         .ai_socktype = SOCK_STREAM
     };
     struct addrinfo *address_info;
 
     int gai_code = getaddrinfo(NULL, port, &request, &address_info);
-    if (gai_code > 0) {
+    if (gai_code != 0) {
         fprintf(stderr, "error: %s\n", gai_strerror(gai_code));
         exit(1);
     }
